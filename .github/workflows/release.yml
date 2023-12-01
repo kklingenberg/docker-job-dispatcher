@@ -1,0 +1,63 @@
+# Heavily based on
+# https://github.com/Nukesor/pueue/blob/4cb610d1da60206806d43180e8d78934a690deb8/.github/workflows/package-binary.yml
+
+name: Build binaries
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-musl
+          override: true
+
+      - name: cargo build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --locked --target=x86_64-unknown-linux-musl
+          use-cross: true
+
+      - name: Compress binary
+        uses: svenstaro/upx-action@v2
+        with:
+          file: target/x86_64-unknown-linux-musl/release/docker-job-dispatcher
+          args: --lzma
+          strip: true
+
+      - name: Upload binary to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/x86_64-unknown-linux-musl/release/docker-job-dispatcher
+          asset_name: docker-job-dispatcher
+          tag: ${{ github.ref }}
+          overwrite: true
+
+  docker:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Login
+        run: echo "${{ secrets.DOCKER_HUB_PASSWORD }}" | docker login -u plotter --password-stdin
+
+      - name: Build image
+        run: docker build --build-arg "VERSION=${{ github.ref_name }}"
+          -t "plotter/docker-job-dispatcher:latest"
+          -t "plotter/docker-job-dispatcher:${{ github.ref_name }}"
+          .
+
+      - name: Push image
+        run: docker push --all-tags plotter/docker-job-dispatcher
