@@ -5,7 +5,7 @@ mod scheduler;
 
 use actix_web::{middleware, web, App, HttpServer};
 use anyhow::Result;
-use clap::Parser;
+use clap::{value_parser, Parser};
 use std::path::PathBuf;
 use tracing::{info, warn};
 
@@ -27,12 +27,12 @@ struct Cli {
     port: u16,
 
     /// Maximum number of concurrently-running containers; default is
-    /// unlimited
+    /// unlimited; set to 0 to never start jobs
     #[arg(short, long, env)]
     max_concurrent: Option<u16>,
 
     /// Interval in seconds to perform periodic scheduling upkeep
-    #[arg(short, long, env, default_value_t = 3)]
+    #[arg(short, long, env, value_parser = value_parser!(u16).range(1..), default_value_t = 3)]
     scheduling_interval: u16,
 
     /// Means of connection to the docker daemon
@@ -86,18 +86,18 @@ async fn main() -> Result<()> {
     })
     .bind(("0.0.0.0", cli.port))?;
 
-    if let Some(max_concurrent) = cli.max_concurrent {
+    // Start the API and optionally start the job scheduler
+    if matches!(cli.max_concurrent, Some(max_concurrent) if max_concurrent > 0) {
         // Using a scheduler as a background job
-        info!("Using a scheduler for {max_concurrent} concurrent containers");
-        let scheduling_interval = if cli.scheduling_interval > 0 {
+        let max_concurrent = cli.max_concurrent.unwrap_or_default();
+        info!(
+            "Using a scheduler for {max_concurrent} concurrent containers, \
+             scheduling every {} seconds",
             cli.scheduling_interval
-        } else {
-            warn!("Scheduling interval must be greater than zero; using default");
-            3
-        };
+        );
         let scheduling_task = tokio::spawn(scheduler::cycle(
             max_concurrent,
-            scheduling_interval,
+            cli.scheduling_interval,
             cli.namespace,
         ));
         tokio::select! {
@@ -110,6 +110,9 @@ async fn main() -> Result<()> {
         };
     } else {
         // Not using a scheduler
+        if matches!(cli.max_concurrent, Some(max_concurrent) if max_concurrent == 0) {
+            warn!("Maximum concurrent jobs set to 0; containers won't be started");
+        }
         api.run().await?;
     }
 
