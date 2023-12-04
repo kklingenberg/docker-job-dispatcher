@@ -45,7 +45,7 @@ fn jq_extensions() -> impl Iterator<Item = (String, usize, Native)> {
 
 /// Compile a filter.
 pub fn compile(filter: &str) -> Result<Filter> {
-    let mut defs = ParseCtx::new(vec!["ENV".to_string()]);
+    let mut defs = ParseCtx::new(vec!["ENV".to_string(), "PATH".to_string()]);
     defs.insert_natives(jaq_core::core());
     defs.insert_natives(jq_extensions());
     defs.insert_defs(jaq_std::std());
@@ -62,10 +62,13 @@ pub fn compile(filter: &str) -> Result<Filter> {
 
 /// Execute a compiled filter against an input, and produce the first
 /// serde_json value.
-pub fn first_result(filter: &Filter, input: Value) -> Option<Result<Value>> {
+pub fn first_result(filter: &Filter, input: Value, path: &str) -> Option<Result<Value>> {
     let inputs = RcIter::new(core::iter::empty());
     let mut outputs = filter
-        .run((Ctx::new([jq_env()], &inputs), Val::from(input)))
+        .run((
+            Ctx::new([jq_env(), Val::str(path.to_string())], &inputs),
+            Val::from(input),
+        ))
         .map(|r| r.map(Value::from).map_err(|e| anyhow!(e.to_string())));
     let first_result = outputs.next();
     if outputs.next().is_some() {

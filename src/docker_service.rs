@@ -3,7 +3,7 @@
 use crate::docker;
 use crate::jq;
 
-use actix_web::{error, get, post, web, HttpResponse, Responder, Result};
+use actix_web::{error, get, routes, web, HttpResponse, Responder, Result};
 use bollard::container::Config;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -27,16 +27,27 @@ struct CreateContainerOptions {
     platform: Option<String>,
 }
 
+/// A container for the create_job path information.
+#[derive(Deserialize)]
+struct PathInfo {
+    path: Option<String>,
+}
+
 /// Create a job by converting the request body to a job manifest.
+#[routes]
 #[post("/job")]
+#[post("/job/{path:.*}")]
 async fn create_job(
+    path: web::Path<PathInfo>,
     body: web::Json<Value>,
     filter: web::Data<jq::Filter>,
     can_start: web::Data<bool>,
     namespace: web::Data<String>,
 ) -> Result<impl Responder> {
-    debug!("Job creation request: {:?}", body);
-    let raw_manifest = jq::first_result(&filter, body.into_inner())
+    let path = format!("/job/{}", path.path.clone().unwrap_or_default());
+    let path = path.strip_suffix('/').map(String::from).unwrap_or(path);
+    debug!("Job creation request at {:?}: {:?}", path, body);
+    let raw_manifest = jq::first_result(&filter, body.into_inner(), &path)
         .ok_or_else(|| error::ErrorBadRequest("Filter didn't produce results"))?
         .map_err(|e| error::ErrorBadRequest(format!("Filter failed: {:?}", e)))?;
     debug!("Job raw manifest: {:?}", raw_manifest);
