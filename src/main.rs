@@ -1,9 +1,10 @@
+mod api_error;
 mod docker;
 mod docker_service;
 mod jq;
 mod scheduler;
 
-use actix_web::{middleware, web, App, HttpServer};
+use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer, Result as RouteResult};
 use anyhow::Result;
 use clap::{value_parser, Parser};
 use std::path::PathBuf;
@@ -48,6 +49,11 @@ struct Cli {
     log_level: tracing::Level,
 }
 
+/// Default 404 response
+async fn no_route() -> RouteResult<HttpResponse> {
+    Err::<_, Error>(api_error::APIError::not_found("Route not found").into())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -83,6 +89,7 @@ async fn main() -> Result<()> {
             .app_data(namespace.clone())
             .service(docker_service::create_job)
             .service(docker_service::get_job)
+            .default_service(web::route().to(no_route))
     })
     .bind(("0.0.0.0", cli.port))?;
 

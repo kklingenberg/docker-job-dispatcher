@@ -4,8 +4,11 @@
 
 {
   Name: (($ENV.JOB_NAME_PREFIX // "demo-job-") + (.id // @sha1)),
-  Image: $ENV.JOB_IMAGE // "busybox:latest",
-  Entrypoint: [$ENV.JOB_COMMAND // "echo"],
+  Image: $ENV.JOB_IMAGE // "debian:stable-slim",
+  Entrypoint: [
+    ($ENV.JOB_TTL | tonumber? | tostring | "timeout", .),
+    $ENV.JOB_COMMAND // "echo"
+  ],
   Cmd: .args,
   Env: [
     $ENV
