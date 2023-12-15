@@ -11,8 +11,8 @@ async fn liveness_check() -> impl Responder {
     HttpResponse::NoContent().finish()
 }
 
-/// Readiness check: if the K8s API responds, the process is ready to
-/// receive commands.
+/// Readiness check: if the docker API responds, the process is ready
+/// to receive commands.
 #[get("/health/ready")]
 async fn readiness_check() -> Result<impl Responder> {
     docker::ping()

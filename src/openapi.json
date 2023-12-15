@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Docker job dispatcher",
-    "description": "This is a simple facade over the docker API that converts requests into containers, to operate as jobs dispatched by ad-hoc requests.",
+    "description": "This is a simple facade over the docker API that converts requests into containers to operate as jobs.",
     "version": "v0.2.2"
   },
   "externalDocs": {
