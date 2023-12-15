@@ -42,6 +42,12 @@ fn client() -> Result<&'static Docker> {
         .context("docker client has not been initialized")
 }
 
+/// Test the connection with the docker daemon.
+pub async fn ping() -> Result<()> {
+    client()?.ping().await?;
+    Ok(())
+}
+
 /// A label key to use when annotating containers.
 const JOB_LABEL_KEY: &str = concat!(env!("CARGO_PKG_NAME"), ".namespace");
 

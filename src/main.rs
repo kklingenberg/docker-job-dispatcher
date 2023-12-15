@@ -1,14 +1,19 @@
 mod api_error;
 mod docker;
 mod docker_service;
+mod health_service;
 mod jq;
 mod scheduler;
 
-use actix_web::{middleware, web, App, Error, HttpResponse, HttpServer, Result as RouteResult};
+use actix_web::{
+    http::header::ContentType, middleware, web, App, Error, HttpResponse, HttpServer,
+    Result as RouteResult,
+};
 use anyhow::Result;
 use clap::{value_parser, Parser};
 use std::path::PathBuf;
 use tracing::{info, warn};
+use utoipa_rapidoc::RapiDoc;
 
 const DEFAULT_FILTER: &str = include_str!("default_filter.jq");
 
@@ -54,6 +59,9 @@ async fn no_route() -> RouteResult<HttpResponse> {
     Err::<_, Error>(api_error::APIError::not_found("Route not found").into())
 }
 
+/// OpenAPI schema
+const OPENAPI: &str = include_str!("openapi.json");
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -87,8 +95,19 @@ async fn main() -> Result<()> {
             .app_data(filter.clone())
             .app_data(containers_can_start.clone())
             .app_data(namespace.clone())
+            .service(health_service::liveness_check)
+            .service(health_service::readiness_check)
             .service(docker_service::create_job)
             .service(docker_service::get_job)
+            .route(
+                "/openapi.json",
+                web::get().to(|| async {
+                    HttpResponse::Ok()
+                        .content_type(ContentType::json())
+                        .body(OPENAPI)
+                }),
+            )
+            .service(RapiDoc::new("/openapi.json").path("/docs"))
             .default_service(web::route().to(no_route))
     })
     .bind(("0.0.0.0", cli.port))?;

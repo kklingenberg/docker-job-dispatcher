@@ -1,0 +1,273 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Docker job dispatcher",
+    "description": "This is a simple facade over the docker API that converts requests into containers, to operate as jobs dispatched by ad-hoc requests.",
+    "version": "v0.2.2"
+  },
+  "externalDocs": {
+    "description": "Github repository",
+    "url": "https://github.com/kklingenberg/docker-job-dispatcher"
+  },
+  "tags": [
+    {
+      "name": "job",
+      "description": "Create and fetch jobs"
+    },
+    {
+      "name": "health",
+      "description": "Diagnose the API"
+    }
+  ],
+  "paths": {
+    "/job": {
+      "post": {
+        "tags": ["job"],
+        "summary": "Create a job",
+        "description": "Create a job as a docker container",
+        "operationId": "createJob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {},
+              "example": {
+                "args": ["Hello", "world!"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "job with the generated name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "job was created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "job generation failed because of an invalid job manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "job generation failed while trying to communicate with the docker daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/job/{path}": {
+      "post": {
+        "tags": ["job"],
+        "summary": "Create a job",
+        "description": "Create a job as a docker container",
+        "operationId": "createJobWithPath",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "Path information to provide for the job",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {},
+              "example": {
+                "args": ["Hello", "world!"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "job with the generated name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "job was created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "job generation failed because of an invalid job manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "job generation failed while trying to communicate with the docker daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/job/{id}": {
+      "get": {
+        "tags": ["job"],
+        "summary": "Fetch a job",
+        "description": "Fetch a job by its ID",
+        "operationId": "fetchJob",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of the job to fetch",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "job matching the given ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "job doesn't exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "job fetching failed while trying to communicate with the docker daemon",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": ["health"],
+        "summary": "Liveness test",
+        "description": "A liveness test",
+        "operationId": "liveness",
+        "responses": {
+          "204": {
+            "description": "Liveness test passes"
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": ["health"],
+        "summary": "Readiness test",
+        "description": "A readiness test",
+        "operationId": "readiness",
+        "responses": {
+          "204": {
+            "description": "Readiness test passes"
+          },
+          "503": {
+            "description": "The docker daemon couldn't be reached"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JobSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "example": "job-id"
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1702598995
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1,
+            "example": "Exited(0)"
+          }
+        },
+        "required": ["id"]
+      },
+      "APIError": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "integer",
+            "example": 400
+          },
+          "msg": {
+            "type": "string",
+            "example": "Invalid payload"
+          }
+        }
+      }
+    }
+  }
+}
