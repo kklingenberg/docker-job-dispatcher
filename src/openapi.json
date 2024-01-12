@@ -3,7 +3,7 @@
   "info": {
     "title": "Docker job dispatcher",
     "description": "This is a simple facade over the docker API that converts requests into containers to operate as jobs.",
-    "version": "v0.2.2"
+    "version": "v0.3.0"
   },
   "externalDocs": {
     "description": "Github repository",
