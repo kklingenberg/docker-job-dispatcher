@@ -28,8 +28,10 @@ Options:
           TCP port to listen on [env: PORT=] [default: 8000]
   -m, --max-concurrent <MAX_CONCURRENT>
           Maximum number of concurrently-running containers; default is unlimited; set to 0 to never start jobs [env: MAX_CONCURRENT=]
-  -s, --scheduling-interval <SCHEDULING_INTERVAL>
-          Interval in seconds to perform periodic scheduling upkeep [env: SCHEDULING_INTERVAL=] [default: 3]
+  -k, --keep-exited-for <KEEP_EXITED_FOR>
+          Interval in seconds to keep an exited job; default is to keep them forever [env: KEEP_EXITED_FOR=]
+  -u, --upkeep-interval <UPKEEP_INTERVAL>
+          Interval in seconds to perform periodic scheduling and cleanup upkeep [env: UPKEEP_INTERVAL=] [default: 3]
   -t, --transport <TRANSPORT>
           Means of connection to the docker daemon [env: TRANSPORT=] [default: socket] [possible values: http, tls, socket]
   -n, --namespace <NAMESPACE>
@@ -50,14 +52,3 @@ to control the maximum number of concurrent containers being executed. It works
 by polling the Docker API for running containers, and selecting the oldest
 not-yet-started ones for scheduling. This behaviour is disabled by default,
 which implies that no limit is imposed on the number of active jobs.
-
-## Container cleanup
-
-This tool does **not** clear exited containers, so it's up to the user to clear
-them. Unfortunately the simple `docker container prune` can't be safely used for
-this, since it would remove pending jobs as well. To remove the exited
-containers, a variation of the following command can be used:
-
-```bash
-docker ps --filter status=exited -q | xargs docker rm
-```

@@ -1,4 +1,5 @@
 mod api_error;
+mod cleaner;
 mod docker;
 mod docker_service;
 mod health_service;
@@ -37,9 +38,15 @@ struct Cli {
     #[arg(short, long, env)]
     max_concurrent: Option<u16>,
 
-    /// Interval in seconds to perform periodic scheduling upkeep
+    /// Interval in seconds to keep an exited job; default is to keep
+    /// them forever
+    #[arg(short, long, env)]
+    keep_exited_for: Option<u32>,
+
+    /// Interval in seconds to perform periodic scheduling and cleanup
+    /// upkeep
     #[arg(short, long, env, value_parser = value_parser!(u16).range(1..), default_value_t = 3)]
-    scheduling_interval: u16,
+    upkeep_interval: u16,
 
     /// Means of connection to the docker daemon
     #[arg(short, long, env, value_enum, default_value_t = docker::Transport::Socket)]
@@ -112,34 +119,98 @@ async fn main() -> Result<()> {
     })
     .bind(("0.0.0.0", cli.port))?;
 
-    // Start the API and optionally start the job scheduler
-    if matches!(cli.max_concurrent, Some(max_concurrent) if max_concurrent > 0) {
-        // Using a scheduler as a background job
-        let max_concurrent = cli.max_concurrent.unwrap_or_default();
-        info!(
-            "Using a scheduler for {max_concurrent} concurrent containers, \
-             scheduling every {} seconds",
-            cli.scheduling_interval
-        );
-        let scheduling_task = tokio::spawn(scheduler::cycle(
-            max_concurrent,
-            cli.scheduling_interval,
-            cli.namespace,
-        ));
-        tokio::select! {
-            api_result = api.run() => api_result?,
-            scheduling_result = scheduling_task => match scheduling_result {
-                Ok(inner_error @ Err(_)) => inner_error?,
-                Err(e) => Err(e)?,
-                _ => ()
+    // Start the API and optionally start the job scheduler and cleaner
+    match (cli.max_concurrent, cli.keep_exited_for) {
+        // full-featured: scheduler and cleaner
+        (Some(max_concurrent), Some(keep_exited_for)) if max_concurrent > 0 => {
+            info!(
+                "Using a scheduler for {max_concurrent} concurrent containers, \
+                 scheduling every {} seconds",
+                cli.upkeep_interval
+            );
+            info!(
+                "Using a cleaner for exited jobs older than {keep_exited_for} \
+                 seconds, cleaning every {} seconds",
+                cli.upkeep_interval
+            );
+            let scheduling_task = tokio::spawn(scheduler::cycle(
+                max_concurrent,
+                cli.upkeep_interval,
+                cli.namespace.clone(),
+            ));
+            let cleaning_task = tokio::spawn(cleaner::cycle(
+                keep_exited_for,
+                cli.upkeep_interval,
+                cli.namespace,
+            ));
+            tokio::select! {
+                api_result = api.run() => api_result?,
+                scheduling_result = scheduling_task => match scheduling_result {
+                    Ok(inner_error @ Err(_)) => inner_error?,
+                    Err(e) => Err(e)?,
+                    _ => ()
+                },
+                cleaning_result = cleaning_task => match cleaning_result {
+                    Ok(inner_error @ Err(_)) => inner_error?,
+                    Err(e) => Err(e)?,
+                    _ => ()
+                }
             }
-        };
-    } else {
-        // Not using a scheduler
-        if matches!(cli.max_concurrent, Some(max_concurrent) if max_concurrent == 0) {
-            warn!("Maximum concurrent jobs set to 0; containers won't be started");
         }
-        api.run().await?;
+        // only scheduler
+        (Some(max_concurrent), None) if max_concurrent > 0 => {
+            info!(
+                "Using a scheduler for {max_concurrent} concurrent containers, \
+                 scheduling every {} seconds",
+                cli.upkeep_interval
+            );
+            warn!("Exited jobs will be kept indefinitely");
+            let scheduling_task = tokio::spawn(scheduler::cycle(
+                max_concurrent,
+                cli.upkeep_interval,
+                cli.namespace,
+            ));
+            tokio::select! {
+                api_result = api.run() => api_result?,
+                scheduling_result = scheduling_task => match scheduling_result {
+                    Ok(inner_error @ Err(_)) => inner_error?,
+                    Err(e) => Err(e)?,
+                    _ => ()
+                }
+            }
+        }
+        // only cleaner
+        (_, Some(keep_exited_for)) => {
+            if matches!(cli.max_concurrent, Some(max_concurrent) if max_concurrent == 0) {
+                warn!("Maximum concurrent jobs set to 0; containers won't be started");
+            }
+            info!(
+                "Using a cleaner for exited jobs older than {keep_exited_for} \
+                 seconds, cleaning every {} seconds",
+                cli.upkeep_interval
+            );
+            let cleaning_task = tokio::spawn(cleaner::cycle(
+                keep_exited_for,
+                cli.upkeep_interval,
+                cli.namespace,
+            ));
+            tokio::select! {
+                api_result = api.run() => api_result?,
+                cleaning_result = cleaning_task => match cleaning_result {
+                    Ok(inner_error @ Err(_)) => inner_error?,
+                    Err(e) => Err(e)?,
+                    _ => ()
+                }
+            }
+        }
+        // neither scheduler nor cleaner
+        _ => {
+            if matches!(cli.max_concurrent, Some(max_concurrent) if max_concurrent == 0) {
+                warn!("Maximum concurrent jobs set to 0; containers won't be started");
+            }
+            warn!("Exited jobs will be kept indefinitely");
+            api.run().await?;
+        }
     }
 
     Ok(())

@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use bollard::{
     container::{Config, CreateContainerOptions, ListContainersOptions},
     errors::Error,
-    models::{ContainerCreateResponse, ContainerSummary},
+    models::{ContainerCreateResponse, ContainerInspectResponse, ContainerSummary},
     Docker,
 };
 use clap::ValueEnum;
@@ -115,6 +115,16 @@ pub async fn get<S: AsRef<str>>(name: S, namespace: &str) -> Result<Option<Conta
         .map(|containers| containers.into_iter().next())?)
 }
 
+/// Inspect a possibly non-existent job.
+pub async fn inspect<S: AsRef<str>>(name: S) -> Result<ContainerInspectResponse> {
+    Ok(client()?.inspect_container(name.as_ref(), None).await?)
+}
+
+/// Remove a job.
+pub async fn remove<S: AsRef<str>>(name: S) -> Result<()> {
+    Ok(client()?.remove_container(name.as_ref(), None).await?)
+}
+
 /// Count the number of currently active jobs.
 pub async fn count_active(namespace: &str) -> Result<usize> {
     let mut filters = HashMap::new();
@@ -133,10 +143,10 @@ pub async fn count_active(namespace: &str) -> Result<usize> {
         .map(|containers| containers.len())?)
 }
 
-/// Get the not-yet-started jobs in order from oldest to newest.
-pub async fn get_pending(namespace: &str) -> Result<Vec<ContainerSummary>> {
+/// Get jobs by their status, in order from oldest to newest.
+async fn get_by_status(namespace: &str, status: &str) -> Result<Vec<ContainerSummary>> {
     let mut filters = HashMap::new();
-    filters.insert("status", vec!["created"]);
+    filters.insert("status", vec![status]);
     let label_filter = format!("{}={}", JOB_LABEL_KEY, namespace);
     filters.insert("label", vec![label_filter.as_str()]);
     let options = ListContainersOptions {
@@ -152,4 +162,14 @@ pub async fn get_pending(namespace: &str) -> Result<Vec<ContainerSummary>> {
             containers.sort_unstable_by_key(|container| container.created);
             containers
         })?)
+}
+
+/// Get the not-yet-started jobs.
+pub async fn get_pending(namespace: &str) -> Result<Vec<ContainerSummary>> {
+    get_by_status(namespace, "created").await
+}
+
+/// Get the exited jobs.
+pub async fn get_exited(namespace: &str) -> Result<Vec<ContainerSummary>> {
+    get_by_status(namespace, "exited").await
 }

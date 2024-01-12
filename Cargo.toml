@@ -1,12 +1,13 @@
 [package]
 name = "docker-job-dispatcher"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
 actix-web = "4.4.0"
 anyhow = "1.0.75"
 bollard = { version = "0.15.0", features = ["ssl", "chrono"] }
+chrono = "0.4.31"
 clap = { version = "4.4.10", features = ["env", "derive"] }
 cuid2 = "0.1.2"
 futures = "0.3.29"
