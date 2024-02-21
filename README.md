@@ -45,6 +45,29 @@ Options:
 
 ```
 
+## Monitoring
+
+A very basic metric can be queried from the `/metrics` endpoint, which is
+exposed in OpenMetrics format. The `action` label corresponds to the docker
+system events `create`, `start` and `die`. The following applies: jobs running ≅
+jobs started - jobs died. However, started jobs as exposed by the metric doesn't
+differentiate between new jobs and job restarts. Also, the `status` label
+applies only to died jobs and can be used to distinguish successful jobs from
+failed ones. For example:
+
+```text
+# HELP jobs Number of jobs.
+# TYPE jobs counter
+jobs_total{namespace="default",action="die",status="124"} 3
+jobs_total{namespace="default",action="create",status=""} 2
+jobs_total{namespace="default",action="start",status=""} 4
+jobs_total{namespace="default",action="die",status="0"} 1
+# EOF
+```
+
+This snapshot shows no jobs currently running, 2 different jobs created, one of
+them successful and the other one failed with 2 restarts (both also failing).
+
 ## Concurrency control using polling
 
 The dispatcher doesn't deal with queues, but a rudimentary mechanism is included

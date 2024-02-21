@@ -4,6 +4,7 @@ mod docker;
 mod docker_service;
 mod health_service;
 mod jq;
+mod metrics_service;
 mod scheduler;
 
 use actix_web::{
@@ -95,7 +96,7 @@ async fn main() -> Result<()> {
     let namespace = web::Data::new(cli.namespace.clone());
     docker::init(cli.transport)?;
 
-    // Prepare the HTTP server
+    // Prepare the HTTP server and metrics consumer
     let api = HttpServer::new(move || {
         App::new()
             .wrap(middleware::NormalizePath::trim())
@@ -104,6 +105,7 @@ async fn main() -> Result<()> {
             .app_data(namespace.clone())
             .service(health_service::liveness_check)
             .service(health_service::readiness_check)
+            .service(metrics_service::expose)
             .service(docker_service::create_job)
             .service(docker_service::get_job)
             .route(
@@ -118,6 +120,18 @@ async fn main() -> Result<()> {
             .default_service(web::route().to(no_route))
     })
     .bind(("0.0.0.0", cli.port))?;
+    let metrics_task = tokio::spawn(metrics_service::run(cli.namespace.clone()));
+    let core_task = || async {
+        tokio::select! {
+            api_result = api.run() => api_result?,
+            metrics_result = metrics_task => match metrics_result {
+                Ok(inner_error @ Err(_)) => inner_error?,
+                Err(e) => Err(e)?,
+                _ => ()
+            }
+        };
+        Ok::<(), anyhow::Error>(())
+    };
 
     // Start the API and optionally start the job scheduler and cleaner
     match (cli.max_concurrent, cli.keep_exited_for) {
@@ -144,7 +158,7 @@ async fn main() -> Result<()> {
                 cli.namespace,
             ));
             tokio::select! {
-                api_result = api.run() => api_result?,
+                core_result = core_task() => core_result?,
                 scheduling_result = scheduling_task => match scheduling_result {
                     Ok(inner_error @ Err(_)) => inner_error?,
                     Err(e) => Err(e)?,
@@ -171,7 +185,7 @@ async fn main() -> Result<()> {
                 cli.namespace,
             ));
             tokio::select! {
-                api_result = api.run() => api_result?,
+                core_result = core_task() => core_result?,
                 scheduling_result = scheduling_task => match scheduling_result {
                     Ok(inner_error @ Err(_)) => inner_error?,
                     Err(e) => Err(e)?,
@@ -195,7 +209,7 @@ async fn main() -> Result<()> {
                 cli.namespace,
             ));
             tokio::select! {
-                api_result = api.run() => api_result?,
+                core_result = core_task() => core_result?,
                 cleaning_result = cleaning_task => match cleaning_result {
                     Ok(inner_error @ Err(_)) => inner_error?,
                     Err(e) => Err(e)?,
@@ -209,7 +223,7 @@ async fn main() -> Result<()> {
                 warn!("Maximum concurrent jobs set to 0; containers won't be started");
             }
             warn!("Exited jobs will be kept indefinitely");
-            api.run().await?;
+            core_task().await?;
         }
     }
 

@@ -4,10 +4,12 @@ use anyhow::{Context, Result};
 use bollard::{
     container::{Config, CreateContainerOptions, ListContainersOptions},
     errors::Error,
-    models::{ContainerCreateResponse, ContainerInspectResponse, ContainerSummary},
+    models::{ContainerCreateResponse, ContainerInspectResponse, ContainerSummary, EventMessage},
+    system::EventsOptions,
     Docker,
 };
 use clap::ValueEnum;
+use futures::stream::Stream;
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
 
@@ -172,4 +174,27 @@ pub async fn get_pending(namespace: &str) -> Result<Vec<ContainerSummary>> {
 /// Get the exited jobs.
 pub async fn get_exited(namespace: &str) -> Result<Vec<ContainerSummary>> {
     get_by_status(namespace, "exited").await
+}
+
+/// Get the job events stream.
+pub fn job_events(
+    namespace: &str,
+) -> Result<impl Stream<Item = core::result::Result<EventMessage, Error>>> {
+    let mut filters = HashMap::new();
+    filters.insert(String::from("type"), vec![String::from("container")]);
+    filters.insert(
+        String::from("event"),
+        vec![
+            String::from("create"),
+            String::from("die"),
+            String::from("start"),
+        ],
+    );
+    let label_filter = format!("{}={}", JOB_LABEL_KEY, namespace);
+    filters.insert(String::from("label"), vec![label_filter]);
+    Ok(client()?.events(Some(EventsOptions {
+        since: None,
+        until: None,
+        filters,
+    })))
 }
