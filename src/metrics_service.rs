@@ -5,7 +5,7 @@ use crate::docker;
 
 use actix_web::{error, get, HttpResponse};
 use anyhow::Result;
-use futures::{lock::Mutex, stream::TryStreamExt};
+use futures::stream::TryStreamExt;
 use once_cell::sync::OnceCell;
 use prometheus_client::{
     encoding::{text::encode, EncodeLabelSet},
@@ -13,6 +13,7 @@ use prometheus_client::{
     registry::Registry,
 };
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Static metrics registry.
 static REGISTRY: OnceCell<Arc<Mutex<Registry>>> = OnceCell::new();
@@ -50,6 +51,28 @@ pub async fn run(namespace: String) -> Result<()> {
         let mut reg = registry().lock().await;
         reg.register("jobs", "Number of jobs", jobs.clone());
     }
+    // account for already active jobs
+    let (active, created) = tokio::join!(
+        docker::count_active(&namespace),
+        docker::get_pending(&namespace)
+    );
+    let active: u64 = active?.try_into()?;
+    let created: u64 = created?.len().try_into()?;
+    jobs.get_or_create(&Labels {
+        namespace: namespace.clone(),
+        action: Some(String::from("create")),
+        status: None,
+    })
+    .inc_by(active + created);
+    jobs.get_or_create(&Labels {
+        namespace: namespace.clone(),
+        action: Some(String::from("start")),
+        status: None,
+    })
+    .inc_by(active);
+    // listen for new events
+    // note: events in between the probe above and the start of this
+    // stream are lost, oh well
     docker::job_events(&namespace)?
         .try_for_each(|event| async {
             jobs.get_or_create(&Labels {

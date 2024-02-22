@@ -10,6 +10,11 @@ use tracing::{error, info};
 /// Check exited containers, and remove them if they're old enough
 /// according to maximum age.
 async fn clean(max_age: u32, namespace: &str) -> Result<()> {
+    // the /containers/prune API could be useful here if it did have a
+    // filter for finished_at timestamps, but it doesn't (there's a
+    // filter for created_at timestamps though, but that's not what
+    // determines age here)
+    // thus this fetch -> filter(old-enough) -> map(remove) scheme
     let finished_at_threshold = Utc::now()
         .checked_sub_signed(ChronoDuration::seconds(max_age.into()))
         .ok_or_else(|| anyhow!("can't calculate exited age threshold"))?
