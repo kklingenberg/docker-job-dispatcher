@@ -81,7 +81,7 @@ pub async fn run(namespace: String) -> Result<()> {
                 status: event
                     .actor
                     .and_then(|a| a.attributes)
-                    .and_then(|map| map.get("exitCode").map(String::clone)),
+                    .and_then(|map| map.get("exitCode").cloned()),
             })
             .inc();
             Ok(())
